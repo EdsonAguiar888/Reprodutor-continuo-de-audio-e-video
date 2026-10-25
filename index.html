@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Repeat Loop Player - Reprodutor Contínuo de Áudio e Vídeo</title>
+  
+  <!-- SEO & Metadados -->
+  <meta name="description" content="PWA para reprodução contínua e repetitiva de áudio e vídeo em loop infinito, com checkpoints por mídia e marcadores de trecho A-B.">
+  <meta name="theme-color" content="#6366f1">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Repeat Loop Player">
+
+  <!-- PWA Manifest & Favicon -->
+  <link rel="manifest" href="./manifest.json">
+  <link rel="icon" type="image/svg+xml" href="./icon.svg">
+  <link rel="apple-touch-icon" href="./icon.svg">
+
+  <!-- Google Fonts: Outfit & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <div class="app-background">
+    <div class="glow-orb orb-1"></div>
+    <div class="glow-orb orb-2"></div>
+    <div class="glow-orb orb-3"></div>
+  </div>
+
+  <div class="app-container">
+    <!-- Barra Superior / Header -->
+    <header class="app-header">
+      <div class="header-brand">
+        <div class="logo-wrapper">
+          <img src="./icon.svg" alt="Repeat Loop Player Logo" class="brand-logo" id="appLogo">
+        </div>
+        <div class="brand-info">
+          <h1 class="brand-title">Repeat Loop Player</h1>
+          <span class="brand-subtitle">Reprodutor Contínuo & Infinito</span>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <!-- Indicador de Status de Repetição -->
+        <div class="status-badge" id="repeatStatusBadge">
+          <span class="status-dot"></span>
+          <span class="status-text" id="repeatStatusText">Repetições: Ativas</span>
+        </div>
+
+        <!-- Botão Manter Tela Ativa (Wake Lock) -->
+        <button class="header-btn" id="btnWakeLock" title="Manter a tela sempre ligada (Wake Lock)">
+          <span class="btn-icon">💡</span>
+          <span class="btn-label">Tela Ativa</span>
+        </button>
+
+        <!-- Botão de Instalar PWA -->
+        <button class="header-btn btn-primary" id="btnInstallPwa" style="display: none;" title="Instalar aplicativo">
+          <span class="btn-icon">📥</span>
+          <span class="btn-label">Instalar App</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Conteúdo Principal -->
+    <main class="main-content">
+      <!-- Coluna Esquerda: Player e Controles -->
+      <section class="player-column">
+        <!-- Palco do Player (Vídeo ou Visualizador de Áudio) -->
+        <div class="player-stage-card" id="playerStageCard">
+          <div class="stage-container" id="stageContainer">
+            <!-- Elemento de Vídeo -->
+            <video id="videoElement" class="media-video" playsinline preload="metadata"></video>
+            
+            <!-- Elemento de Áudio (invisível, controlado pelo script) -->
+            <audio id="audioElement" preload="metadata"></audio>
+
+            <!-- Visualizador de Áudio (Canvas) -->
+            <div class="audio-visualizer-container" id="audioVisualizerContainer">
+              <div class="audio-art-disc" id="audioDisc">
+                <span class="disc-icon">🎵</span>
+              </div>
+              <canvas id="visualizerCanvas" class="visualizer-canvas"></canvas>
+            </div>
+
+            <!-- Overlay de Informações da Mídia -->
+            <div class="stage-overlay-top">
+              <span class="badge media-type-badge" id="currentTypeBadge">Pronto</span>
+              <span class="badge loop-count-badge" id="currentItemLoopBadge" title="Quantas vezes esta mídia já repetiu">
+                🔁 Voltas: <strong id="currentItemLoopCount">0</strong>
+              </span>
+            </div>
+
+            <!-- Overlay de Alerta de Checkpoint A-B -->
+            <div class="stage-overlay-ab" id="abLoopNotice" style="display: none;">
+              <span class="pulse-icon">⏱️</span> Loop Trecho Ativo (<span id="abDisplayRange">A &rarr; B</span>)
+            </div>
+
+            <!-- Overlay de Erro na Mídia -->
+            <div class="stage-overlay-error" id="stageErrorNotice" style="display: none;">
+              <span class="error-stage-icon">⚠️</span>
+              <div class="error-stage-content">
+                <strong id="stageErrorTitle">Erro ao Reproduzir Mídia</strong>
+                <p id="stageErrorDesc">Formato ou codec incompatível com o navegador.</p>
+              </div>
+            </div>
+
+            <!-- Indicador Central de Play/Pause ao Clicar no Palco -->
+            <div class="stage-center-pulse" id="stageCenterPulse" style="display: none;">
+              <span class="center-pulse-icon" id="centerPulseIcon">▶</span>
+            </div>
+          </div>
+
+          <!-- Informações da Mídia Atual -->
+          <div class="media-metadata">
+            <h2 class="current-track-title" id="currentTrackTitle">Nenhuma mídia selecionada</h2>
+            <p class="current-track-source" id="currentTrackSource">Adicione arquivos locais ou use as amostras</p>
+          </div>
+
+          <!-- Barra de Progresso Personalizada com Marcadores A e B -->
+          <div class="timeline-wrapper">
+            <div class="timeline-container" id="timelineContainer">
+              <div class="timeline-track" id="timelineTrack">
+                <div class="timeline-progress" id="timelineProgress"></div>
+                <div class="timeline-ab-segment" id="timelineAbSegment" style="display: none;"></div>
+                <div class="marker marker-a" id="markerA" style="display: none;" title="Ponto de Início (A)">A</div>
+                <div class="marker marker-b" id="markerB" style="display: none;" title="Ponto de Fim (B)">B</div>
+              </div>
+              <input type="range" class="timeline-slider" id="timelineSlider" min="0" max="100" value="0" step="0.1" aria-label="Progresso da mídia">
+            </div>
+
+            <div class="time-readout">
+              <span class="time-text" id="currentTimeDisplay">00:00</span>
+              <span class="time-separator">/</span>
+              <span class="time-text" id="totalDurationDisplay">00:00</span>
+            </div>
+          </div>
+
+          <!-- Painel de Checkpoint A-B (Repetição de Trecho Específico) -->
+          <div class="checkpoint-ab-panel">
+            <div class="ab-panel-header">
+              <div class="ab-title-group">
+                <span class="ab-icon">📍</span>
+                <span class="ab-label">Checkpoint de Trecho (Loop A-B)</span>
+              </div>
+              <label class="switch-toggle" title="Ativar ou desativar repetição do trecho A-B nesta mídia">
+                <input type="checkbox" id="toggleAbActive">
+                <span class="switch-slider"></span>
+              </label>
+            </div>
+
+            <div class="ab-controls-row">
+              <button class="ab-btn" id="btnSetPointA" title="Marca o tempo atual como ponto de início">
+                <span class="ab-tag">Ponto A</span>
+                <span class="ab-val" id="valPointA">--:--</span>
+                <span class="ab-btn-sub">Definir Aqui</span>
+              </button>
+
+              <button class="ab-btn" id="btnSetPointB" title="Marca o tempo atual como ponto de fim">
+                <span class="ab-tag">Ponto B</span>
+                <span class="ab-val" id="valPointB">--:--</span>
+                <span class="ab-btn-sub">Definir Aqui</span>
+              </button>
+
+              <button class="ab-btn btn-clear-ab" id="btnClearAb" title="Limpar marcadores A e B">
+                <span class="ab-icon-clear">✕</span>
+                <span>Resetar Trecho</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Controles de Reprodução Principais -->
+          <div class="playback-controls">
+            <!-- Botão Mestre: Ativar Repetições (Destaque Principal) -->
+            <div class="master-loop-container">
+              <button class="master-loop-btn active" id="btnMasterLoop" title="Alternar Modo de Repetição">
+                <div class="master-loop-icon-box">
+                  <span class="master-loop-icon">🔁</span>
+                </div>
+                <div class="master-loop-content">
+                  <span class="master-loop-title" id="masterLoopTitle">Repetição Infinita: LIGADA</span>
+                  <span class="master-loop-desc" id="masterLoopDesc">Repetindo mídias com checkpoint ativo</span>
+                </div>
+              </button>
+            </div>
+
+            <!-- Botões Primários de Navegação e Play -->
+            <div class="primary-controls-row">
+              <button class="control-btn" id="btnPrev" title="Mídia Anterior">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
+                  <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
+                </svg>
+              </button>
+
+              <button class="control-btn btn-play-main" id="btnPlayPause" title="Reproduzir / Pausar">
+                <svg id="iconPlay" viewBox="0 0 24 24" width="30" height="30" fill="currentColor">
+                  <path d="M8 5v14l11-7z"/>
+                </svg>
+                <svg id="iconPause" viewBox="0 0 24 24" width="30" height="30" fill="currentColor" style="display: none;">
+                  <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+                </svg>
+              </button>
+
+              <button class="control-btn" id="btnNext" title="Próxima Mídia">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
+                  <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
+                </svg>
+              </button>
+            </div>
+
+            <!-- Controles Secundários: Volume, Velocidade, PIP, Tela Cheia -->
+            <div class="secondary-controls-row">
+              <!-- Volume -->
+              <div class="volume-container">
+                <button class="control-btn-sm" id="btnMute" title="Silenciar / Ativar Som">
+                  <span id="volumeIcon">🔊</span>
+                </button>
+                <input type="range" class="volume-slider" id="volumeSlider" min="0" max="1" step="0.05" value="0.9" aria-label="Controle de volume">
+              </div>
+
+              <!-- Velocidade -->
+              <div class="speed-selector-group">
+                <label for="speedSelect" class="speed-label">Velocidade:</label>
+                <select id="speedSelect" class="custom-select" aria-label="Velocidade de reprodução">
+                  <option value="0.5">0.5x</option>
+                  <option value="0.75">0.75x</option>
+                  <option value="1" selected>1.0x (Normal)</option>
+                  <option value="1.25">1.25x</option>
+                  <option value="1.5">1.5x</option>
+                  <option value="2">2.0x</option>
+                </select>
+              </div>
+
+              <!-- Extras: PIP & Fullscreen -->
+              <div class="extra-actions-group">
+                <button class="control-btn-sm" id="btnPip" title="Picture-in-Picture (Janela Flutuante)">
+                  <span>📺</span>
+                </button>
+                <button class="control-btn-sm" id="btnFullscreen" title="Tela Cheia">
+                  <span>⛶</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Coluna Direita: Gerenciador de Playlist & Checkpoints -->
+      <section class="playlist-column">
+        <div class="playlist-card">
+          <!-- Cabeçalho da Playlist -->
+          <div class="playlist-card-header">
+            <div class="playlist-title-wrap">
+              <h3 class="playlist-heading">Fila de Reprodução</h3>
+              <span class="playlist-count-badge" id="playlistCountBadge">0 mídias</span>
+            </div>
+            
+            <div class="playlist-global-actions">
+              <button class="action-btn-sm" id="btnToggleAllCheckpoints" title="Marcar/Desmarcar todos os checkpoints">
+                <span>☑️ Todos</span>
+              </button>
+              <button class="action-btn-sm btn-danger-sm" id="btnClearPlaylist" title="Limpar toda a lista">
+                <span>🗑️ Limpar</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Banner Informativo sobre Checkpoints de Repetição -->
+          <div class="checkpoint-guide-box">
+            <span class="guide-icon">💡</span>
+            <div class="guide-text">
+              <strong>Checkpoints Ativos:</strong> As mídias com o checkpoint marcado (<span class="check-symbol">✓</span>) serão incluídas na repetição contínua. Desmarque caso queira pular uma mídia no ciclo.
+            </div>
+          </div>
+
+          <!-- Botões de Inserção de Mídias -->
+          <div class="add-media-deck">
+            <!-- Input File Oculto com suporte amplo a extensões para Windows -->
+            <input type="file" id="localFileInput" multiple accept="video/*,audio/*,.mp4,.webm,.ogg,.mkv,.mov,.avi,.wmv,.m4v,.flv,.3gp,.ts,.mp3,.wav,.aac,.flac,.m4a,.opus,.wma" style="display: none;">
+            
+            <button class="btn-add-media" id="btnUploadFiles">
+              <span class="btn-add-icon">📁</span>
+              <div class="btn-add-texts">
+                <strong>Adicionar Arquivos</strong>
+                <small>Áudio ou Vídeo do Computador</small>
+              </div>
+            </button>
+
+            <button class="btn-add-media btn-demo" id="btnLoadDemos">
+              <span class="btn-add-icon">✨</span>
+              <div class="btn-add-texts">
+                <strong>Carregar Amostras</strong>
+                <small>Áudio & Vídeo Demo</small>
+              </div>
+            </button>
+
+            <button class="btn-add-media btn-url" id="btnOpenUrlModal">
+              <span class="btn-add-icon">🔗</span>
+              <div class="btn-add-texts">
+                <strong>Adicionar Link / URL</strong>
+                <small>Mídia da Internet</small>
+              </div>
+            </button>
+          </div>
+
+          <!-- Área de Drag & Drop e Lista de Mídias -->
+          <div class="playlist-scroll-area" id="playlistDropZone">
+            <div class="playlist-items-list" id="playlistItemsList">
+              <!-- Renderizado via JavaScript -->
+            </div>
+
+            <!-- Estado Vazio -->
+            <div class="playlist-empty-state" id="playlistEmptyState">
+              <div class="empty-icon-ring">
+                <span class="empty-icon">🎵🎬</span>
+              </div>
+              <h4 class="empty-title">Sua lista está vazia</h4>
+              <p class="empty-desc">Arraste e solte arquivos aqui, ou clique nos botões acima para carregar músicas ou vídeos.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Modal para Inserção de Mídia via URL -->
+  <div class="modal-backdrop" id="urlModal" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">Adicionar Mídia por URL</h3>
+        <button class="modal-close" id="btnCloseUrlModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="inputMediaUrl">Link direto do áudio ou vídeo:</label>
+          <input type="url" id="inputMediaUrl" class="text-input" placeholder="https://exemplo.com/midia.mp4 ou .mp3">
+        </div>
+        <div class="form-group">
+          <label for="inputMediaTitle">Nome ou Título (opcional):</label>
+          <input type="text" id="inputMediaTitle" class="text-input" placeholder="Ex: Trilha Sonora Relaxante">
+        </div>
+        <div class="form-group">
+          <label>Tipo de Mídia:</label>
+          <div class="radio-options-row">
+            <label class="radio-label">
+              <input type="radio" name="mediaTypeRadio" value="auto" checked> Automático
+            </label>
+            <label class="radio-label">
+              <input type="radio" name="mediaTypeRadio" value="video"> Vídeo
+            </label>
+            <label class="radio-label">
+              <input type="radio" name="mediaTypeRadio" value="audio"> Áudio
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-modal-cancel" id="btnCancelUrl">Cancelar</button>
+        <button class="btn-modal-submit" id="btnSubmitUrl">Adicionar à Fila</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Container de Toasts / Notificações Flutuantes -->
+  <div class="toast-container" id="toastContainer" aria-live="polite"></div>
+
+  <script src="./app.js"></script>
+</body>
+</html>
